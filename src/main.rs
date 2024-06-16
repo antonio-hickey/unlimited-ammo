@@ -3,7 +3,6 @@ mod watcher;
 
 /// Build and run the watcher for updates in the codebase
 /// TODO:
-///   * Run build script on updates
 ///   * Recursivly watch directories
 fn main() -> Result<(), error::Error> {
     let mut watcher = watcher::WatcherBuilder::new()

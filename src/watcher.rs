@@ -1,6 +1,8 @@
 use crate::error::Error;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 /// Reponsible for watching the project for updates
@@ -11,6 +13,8 @@ pub struct Watcher {
     ignore_list: Vec<String>,
     /// Target files to watch for changes
     targets: HashMap<String, SystemTime>,
+    /// The current build process for the codebase
+    current_build_process: Option<std::process::Child>,
 }
 impl Watcher {
     /// Start watching the project for updates
@@ -24,9 +28,13 @@ impl Watcher {
             // Current state of targets
             let targets_current_state = self.try_get_targets()?;
 
-            for (target, target_modified_ts) in &targets_current_state {
+            'targets_loop: for (target, target_modified_ts) in &targets_current_state {
                 if self.targets.get(target).unwrap() != target_modified_ts {
                     println!("Updated: {target} at {:?}", target_modified_ts);
+                    match self.try_build_codebase() {
+                        Ok(_) => break 'targets_loop,
+                        Err(_) => continue 'targets_loop,
+                    }
                 }
             }
 
@@ -68,6 +76,39 @@ impl Watcher {
     fn try_get_modified_ts(path: &PathBuf) -> Result<SystemTime, Error> {
         let modified_ts = std::fs::metadata(path)?.modified()?;
         Ok(modified_ts)
+    }
+
+    /// Try to build the codebase
+    fn try_build_codebase(&mut self) -> Result<(), Error> {
+        // Make sure ONLY 1 build process is ever living
+        // (kill old one before spawning new one)
+        if let Some(ref mut old_build) = self.current_build_process {
+            old_build.kill()?;
+            self.current_build_process = None;
+        }
+
+        // Run a new build of the codebase
+        match Command::new("sh").arg("-c").arg("cargo run").spawn() {
+            Ok(build_process) => {
+                // TODO: refactor this block *maybe*, not a fan of this nesting
+                if let Some(ref mut build_process) = self.current_build_process {
+                    if let Some(ref mut output_stream) = build_process.stderr {
+                        let mut output = Vec::new();
+                        output_stream.read_to_end(&mut output)?;
+
+                        println!("{:?}", String::from_utf8_lossy(&output))
+                    }
+                }
+
+                self.current_build_process = Some(build_process);
+
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("{e:?}");
+                Err(Error::BuildFailed(e))
+            }
+        }
     }
 }
 
@@ -124,6 +165,7 @@ impl WatcherBuilder {
             watch_interval: self.watch_interval.unwrap(),
             ignore_list: self.ignore_list.unwrap(),
             targets: HashMap::new(),
+            current_build_process: None,
         };
 
         Ok(watcher)

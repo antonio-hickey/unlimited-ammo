@@ -2,6 +2,7 @@
 pub enum Error {
     StdIo(std::io::Error),
     WatchIntervalNotSet,
+    BuildFailed(std::io::Error),
 }
 impl Error {
     /// Get the error message
@@ -11,6 +12,7 @@ impl Error {
             Self::WatchIntervalNotSet => {
                 String::from("Error: Can't build `Watcher` without setting watch interval.")
             }
+            Self::BuildFailed(e) => format!("Error: Failed to build\n{}", e),
         }
     }
 }
