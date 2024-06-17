@@ -45,26 +45,32 @@ impl Watcher {
 
     /// Try to get a hashmap of target names and their last modified time
     fn try_get_targets(&self) -> Result<HashMap<String, SystemTime>, Error> {
-        let targets: Vec<(String, SystemTime)> = std::fs::read_dir(".")?
-            .filter_map(|target| {
-                if let Ok(target) = target {
-                    // TODO: handle this unwrap
-                    let filename = target.file_name().into_string().unwrap();
+        let mut targets: HashMap<String, SystemTime> = HashMap::new();
+        self.walk_codebase(".", &mut targets)?;
+        Ok(targets)
+    }
 
-                    if self.is_valid_target(&filename) {
-                        let modified_ts = Self::try_get_modified_ts(&target.path()).unwrap();
-                        return Some((filename, modified_ts));
-                    }
+    fn walk_codebase(
+        &self,
+        dir_path: &str,
+        targets: &mut HashMap<String, SystemTime>,
+    ) -> Result<(), Error> {
+        for entry in std::fs::read_dir(dir_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            let filename = entry.file_name().into_string()?;
 
-                    return None;
+            if self.is_valid_target(&filename) {
+                if path.is_dir() && path.to_str().is_some() {
+                    self.walk_codebase(path.to_str().unwrap(), targets)?;
+                } else {
+                    let modified_ts = Self::try_get_modified_ts(&path)?;
+                    targets.insert(filename, modified_ts);
                 }
-                None
-            })
-            .collect();
+            }
+        }
 
-        let targets_hashmap = HashMap::from_iter(targets);
-
-        Ok(targets_hashmap)
+        Ok(())
     }
 
     /// Check if a target is valid (not in the ignore list)
@@ -95,7 +101,6 @@ impl Watcher {
                     if let Some(ref mut output_stream) = build_process.stderr {
                         let mut output = Vec::new();
                         output_stream.read_to_end(&mut output)?;
-
                         println!("{:?}", String::from_utf8_lossy(&output))
                     }
                 }
