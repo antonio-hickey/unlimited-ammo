@@ -1,7 +1,5 @@
 use crate::error::Error;
 use std::collections::HashMap;
-use std::io::Read;
-use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
@@ -13,8 +11,6 @@ pub struct Watcher {
     ignore_list: Vec<String>,
     /// Target files to watch for changes
     targets: HashMap<String, SystemTime>,
-    /// The current build process for the codebase
-    current_build_process: Option<std::process::Child>,
 }
 impl Watcher {
     /// Start watching the project for updates
@@ -31,7 +27,8 @@ impl Watcher {
             'targets_loop: for (target, target_modified_ts) in &targets_current_state {
                 if self.targets.get(target).unwrap() != target_modified_ts {
                     println!("Updated: {target} at {:?}", target_modified_ts);
-                    match self.try_build_codebase() {
+                    let need_to_build_web: bool = target.contains("/src/web/");
+                    match self.try_build_codebase(need_to_build_web) {
                         Ok(_) => break 'targets_loop,
                         Err(_) => continue 'targets_loop,
                     }
@@ -50,6 +47,7 @@ impl Watcher {
         Ok(targets)
     }
 
+    /// Go through each file in a codebase (obeys ignore list)
     fn walk_codebase(
         &self,
         dir_path: &str,
@@ -65,7 +63,9 @@ impl Watcher {
                     self.walk_codebase(path.to_str().unwrap(), targets)?;
                 } else {
                     let modified_ts = Self::try_get_modified_ts(&path)?;
-                    targets.insert(filename, modified_ts);
+                    if let Some(path) = path.to_str() {
+                        targets.insert(path.to_string(), modified_ts);
+                    }
                 }
             }
         }
@@ -79,33 +79,45 @@ impl Watcher {
     }
 
     /// Try to get a timestamp of a paths last modification
-    fn try_get_modified_ts(path: &PathBuf) -> Result<SystemTime, Error> {
+    fn try_get_modified_ts(path: &std::path::PathBuf) -> Result<SystemTime, Error> {
         let modified_ts = std::fs::metadata(path)?.modified()?;
         Ok(modified_ts)
     }
 
     /// Try to build the codebase
-    fn try_build_codebase(&mut self) -> Result<(), Error> {
-        // Make sure ONLY 1 build process is ever living
-        // (kill old one before spawning new one)
-        if let Some(ref mut old_build) = self.current_build_process {
-            old_build.kill()?;
-            self.current_build_process = None;
+    // Run a new build of the codebase
+    fn try_build_codebase(&mut self, need_to_build_web: bool) -> Result<(), Error> {
+        // First check if it's a web build
+        if need_to_build_web {
+            match Command::new("sh")
+                .arg("-c")
+                .arg("cd src/web && npm run build")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+            {
+                Ok(build_process) => {
+                    if let Ok(output) = build_process.wait_with_output() {
+                        println!("102: {:?}", output);
+                        println!("{}", String::from_utf8_lossy(&output.stdout));
+                    }
+
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("{e:?}");
+                    return Err(Error::BuildFailed(e));
+                }
+            }
         }
 
-        // Run a new build of the codebase
+        // else build the rust codebase
         match Command::new("sh").arg("-c").arg("cargo run").spawn() {
             Ok(build_process) => {
-                // TODO: refactor this block *maybe*, not a fan of this nesting
-                if let Some(ref mut build_process) = self.current_build_process {
-                    if let Some(ref mut output_stream) = build_process.stderr {
-                        let mut output = Vec::new();
-                        output_stream.read_to_end(&mut output)?;
-                        println!("{:?}", String::from_utf8_lossy(&output))
-                    }
+                // relay the output for the build process to the user
+                if let Ok(output) = build_process.wait_with_output() {
+                    println!("{}", String::from_utf8_lossy(&output.stderr));
                 }
-
-                self.current_build_process = Some(build_process);
 
                 Ok(())
             }
@@ -151,7 +163,11 @@ impl WatcherBuilder {
             String::from(".git"),
             String::from(".gitignore"),
             String::from("target"),
+            String::from("README.md"),
+            String::from("dist"),
+            String::from("node_modules"),
         ]));
+
         self
     }
 
@@ -170,7 +186,6 @@ impl WatcherBuilder {
             watch_interval: self.watch_interval.unwrap(),
             ignore_list: self.ignore_list.unwrap(),
             targets: HashMap::new(),
-            current_build_process: None,
         };
 
         Ok(watcher)

@@ -3,8 +3,6 @@ mod watcher;
 
 /// Build and run the watcher for updates in the codebase
 /// TODO:
-///   * Support web builds
-///   * Improve default ignore list
 ///   * Write some tests and think about edge cases
 fn main() -> Result<(), error::Error> {
     let mut watcher = watcher::WatcherBuilder::new()
