@@ -1,5 +1,6 @@
 use crate::error::Error;
 use std::collections::HashMap;
+use std::io::Read;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
@@ -11,6 +12,8 @@ pub struct Watcher {
     ignore_list: Vec<String>,
     /// Target files to watch for changes
     targets: HashMap<String, SystemTime>,
+    /// Currently running build process
+    current_build_process: Option<std::process::Child>,
 }
 impl Watcher {
     /// Start watching the project for updates
@@ -55,8 +58,8 @@ impl Watcher {
     ) -> Result<(), Error> {
         for entry in std::fs::read_dir(dir_path)? {
             let entry = entry?;
-            let path = entry.path();
             let filename = entry.file_name().into_string()?;
+            let path = entry.path();
 
             if self.is_valid_target(&filename) {
                 if path.is_dir() && path.to_str().is_some() {
@@ -86,9 +89,15 @@ impl Watcher {
 
     /// Try to build the codebase
     // Run a new build of the codebase
-    fn try_build_codebase(&mut self, need_to_build_web: bool) -> Result<(), Error> {
-        // First check if it's a web build
+    pub fn try_build_codebase(&mut self, need_to_build_web: bool) -> Result<(), Error> {
+        // If there's already a build running then kill and reset it
+        if let Some(ref mut old_build) = self.current_build_process {
+            old_build.kill()?;
+            self.current_build_process = None;
+        }
+
         if need_to_build_web {
+            // NOTE: no need to track this process, we implicitly wait for it's completion
             match Command::new("sh")
                 .arg("-c")
                 .arg("cd src/web && npm run build")
@@ -98,11 +107,8 @@ impl Watcher {
             {
                 Ok(build_process) => {
                     if let Ok(output) = build_process.wait_with_output() {
-                        println!("102: {:?}", output);
                         println!("{}", String::from_utf8_lossy(&output.stdout));
                     }
-
-                    return Ok(());
                 }
                 Err(e) => {
                     eprintln!("{e:?}");
@@ -113,11 +119,16 @@ impl Watcher {
 
         // else build the rust codebase
         match Command::new("sh").arg("-c").arg("cargo run").spawn() {
-            Ok(build_process) => {
+            Ok(mut build_process) => {
                 // relay the output for the build process to the user
-                if let Ok(output) = build_process.wait_with_output() {
-                    println!("{}", String::from_utf8_lossy(&output.stderr));
+                if let Some(ref mut output_stream) = build_process.stderr {
+                    let mut output = String::new();
+                    output_stream.read_to_string(&mut output)?;
+                    println!("{}", output);
                 }
+
+                // Update the current running build proccess to this one we just spawned
+                self.current_build_process = Some(build_process);
 
                 Ok(())
             }
@@ -186,6 +197,7 @@ impl WatcherBuilder {
             watch_interval: self.watch_interval.unwrap(),
             ignore_list: self.ignore_list.unwrap(),
             targets: HashMap::new(),
+            current_build_process: None,
         };
 
         Ok(watcher)
