@@ -1,8 +1,10 @@
 use crate::error::Error;
-use std::collections::HashMap;
-use std::io::Read;
-use std::process::Command;
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    io::Read,
+    process::Command,
+    time::{Duration, SystemTime},
+};
 
 /// Reponsible for watching the project for updates
 pub struct Watcher {
@@ -118,7 +120,11 @@ impl Watcher {
         }
 
         // else build the rust codebase
-        match Command::new("sh").arg("-c").arg("cargo run").spawn() {
+        match Command::new("sh")
+            .arg("-c")
+            .arg("RUSTFLAGS=\"-Awarnings\" cargo run")
+            .spawn()
+        {
             Ok(mut build_process) => {
                 // relay the output for the build process to the user
                 if let Some(ref mut output_stream) = build_process.stderr {
@@ -177,6 +183,8 @@ impl WatcherBuilder {
             String::from("README.md"),
             String::from("dist"),
             String::from("node_modules"),
+            String::from("tsconfig.tsbuildinfo"),
+            String::from("tsconfig.node.tsbuildinfo"),
         ]));
 
         self

@@ -6,6 +6,8 @@ mod watcher;
 ///   * Write some tests and think about edge cases
 ///   * Implement a per project config for unlimited-ammo
 ///     so users can specify settings for seperate codebases.
+///   * Implement a basic terminal user interface
+///   * Refactor try_build_codebase params
 fn main() -> Result<(), error::Error> {
     // Build the watcher / reloadoor
     let mut watcher = watcher::WatcherBuilder::new()
@@ -14,7 +16,7 @@ fn main() -> Result<(), error::Error> {
 
     // "Welcome" message per say
     println!("\x1b[1;32mUnlimited Ammo Enabled\x1b[0m");
-    println!("We'll cover rebuilding, you just code broo\n\n");
+    println!("Just code, I'll cover reloading!\n\n");
 
     // Perform an initial build
     // TODO: should we do a initial web build ?
