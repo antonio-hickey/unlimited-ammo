@@ -8,11 +8,13 @@ mod watcher;
 ///     so users can specify settings for seperate codebases.
 ///   * Implement a basic terminal user interface
 ///   * Refactor try_build_codebase params
+///   * Debug/Verbose mode
 fn main() -> Result<(), error::Error> {
     // Build the watcher / reloadoor
     let mut watcher = watcher::WatcherBuilder::new()
         .set_watch_interval(2)
-        .build()?;
+        .build()
+        .inspect_err(|_| log::error!("failed to build project watcher"))?;
 
     // "Welcome" message per say
     println!("\x1b[1;32mUnlimited Ammo Enabled\x1b[0m");
@@ -21,7 +23,9 @@ fn main() -> Result<(), error::Error> {
     // Perform an initial build
     // TODO: should we do a initial web build ?
     // TODO: I dont like boolean param for rust/web build, not intuitive
-    watcher.try_build_codebase(false)?;
+    watcher
+        .try_build_codebase(false)
+        .inspect_err(|_| log::error!("failed to run initial build on project"))?;
 
     // Start watching the codebase for changes
     match watcher.start() {

@@ -10,10 +10,13 @@ use std::{
 pub struct Watcher {
     /// How fast (in seconds) to check files for updates
     watch_interval: u8,
+
     /// A vector of filenames to ignore
     ignore_list: Vec<String>,
+
     /// Target files to watch for changes
     targets: HashMap<String, SystemTime>,
+
     /// Currently running build process
     current_build_process: Option<std::process::Child>,
 }
@@ -21,17 +24,25 @@ impl Watcher {
     /// Start watching the project for updates
     pub fn start(&mut self) -> Result<(), Error> {
         // Initial state of targets
-        self.targets = self.try_get_targets()?;
+        self.targets = self
+            .try_get_targets()
+            .inspect_err(|_| log::error!("failed to get initial state of target files"))?;
 
         loop {
             std::thread::sleep(Duration::from_secs(self.watch_interval as u64));
 
             // Current state of targets
-            let targets_current_state = self.try_get_targets()?;
+            let targets_current_state = self
+                .try_get_targets()
+                .inspect_err(|_| log::error!("failed to get current state of target files"))?;
 
             'targets_loop: for (target, target_modified_ts) in &targets_current_state {
+                // TODO: Handle this unwrap lazy bum, I think this causes a bug that panics
+                // and leaves the application's process running, so also handle that.
                 if self.targets.get(target).unwrap() != target_modified_ts {
-                    println!("Updated: {target} at {:?}", target_modified_ts);
+                    // TODO: Better time formatting, a sys timestamp is too noisy to quickly extract context
+                    log::info!("you updated: {target} at {:?}", target_modified_ts);
+
                     let need_to_build_web: bool = target.contains("/src/web/");
                     match self.try_build_codebase(need_to_build_web) {
                         Ok(_) => break 'targets_loop,
@@ -58,16 +69,29 @@ impl Watcher {
         dir_path: &str,
         targets: &mut HashMap<String, SystemTime>,
     ) -> Result<(), Error> {
-        for entry in std::fs::read_dir(dir_path)? {
-            let entry = entry?;
-            let filename = entry.file_name().into_string()?;
+        for entry in std::fs::read_dir(dir_path)
+            .inspect_err(|_| log::error!("failed to read directory: {dir_path}"))?
+        {
+            // TODO: Handle the scenario where an entry is not Ok
+            let entry = entry.inspect_err(|_| log::error!("failed to get entry"))?;
+            let filename = entry
+                .file_name()
+                .into_string()
+                .inspect_err(|_| log::error!("failed to parse entry name into string"))?;
             let path = entry.path();
 
             if self.is_valid_target(&filename) {
                 if path.is_dir() && path.to_str().is_some() {
-                    self.walk_codebase(path.to_str().unwrap(), targets)?;
+                    // SAFETY: This unwrap is safe via the invariant check above
+                    self.walk_codebase(path.to_str().unwrap(), targets)
+                        .inspect_err(|_| {
+                            log::error!("failed to walk codebase at entry: {path:?}")
+                        })?;
                 } else {
-                    let modified_ts = Self::try_get_modified_ts(&path)?;
+                    let modified_ts = Self::try_get_modified_ts(&path).inspect_err(|_| {
+                        log::error!("failed to get last modified timestamp for path: {path:?}")
+                    })?;
+
                     if let Some(path) = path.to_str() {
                         targets.insert(path.to_string(), modified_ts);
                     }
@@ -94,7 +118,12 @@ impl Watcher {
     pub fn try_build_codebase(&mut self, need_to_build_web: bool) -> Result<(), Error> {
         // If there's already a build running then kill and reset it
         if let Some(ref mut old_build) = self.current_build_process {
-            old_build.kill()?;
+            old_build.kill().inspect_err(|_| {
+                log::error!(
+                    "failed to kill the previous (stale) running build: (PID: {})",
+                    old_build.id()
+                )
+            })?;
             self.current_build_process = None;
         }
 
@@ -102,18 +131,24 @@ impl Watcher {
             // NOTE: no need to track this process, we implicitly wait for it's completion
             match Command::new("sh")
                 .arg("-c")
+                // TODO: The web build tool should be configurable, I've been using
+                // bun a lot more than npm personally and lot's of people use other
+                // stuff like yarn, pnpm, deno, etc
                 .arg("cd src/web && npm run build")
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
             {
                 Ok(build_process) => {
-                    if let Ok(output) = build_process.wait_with_output() {
-                        println!("{}", String::from_utf8_lossy(&output.stdout));
-                    }
+                    let _ = build_process
+                        .wait_with_output()
+                        .inspect(|output| {
+                            log::info!("web build:\n {}", String::from_utf8_lossy(&output.stdout));
+                        })
+                        .inspect_err(|e| log::error!("failed to build web:\n {e}"));
                 }
                 Err(e) => {
-                    eprintln!("{e:?}");
+                    log::error!("failed to run web build command");
                     return Err(Error::BuildFailed(e));
                 }
             }
@@ -129,8 +164,11 @@ impl Watcher {
                 // relay the output for the build process to the user
                 if let Some(ref mut output_stream) = build_process.stderr {
                     let mut output = String::new();
-                    output_stream.read_to_string(&mut output)?;
-                    println!("{}", output);
+                    output_stream.read_to_string(&mut output).inspect_err(|_| {
+                        log::error!("failed to read build output stream into string")
+                    })?;
+
+                    log::info!("rust build:\n {output}");
                 }
 
                 // Update the current running build proccess to this one we just spawned
@@ -139,7 +177,7 @@ impl Watcher {
                 Ok(())
             }
             Err(e) => {
-                eprintln!("{e:?}");
+                log::error!("failed to run rust build command");
                 Err(Error::BuildFailed(e))
             }
         }
@@ -148,7 +186,9 @@ impl Watcher {
 
 /// Builder Pattern Struct for `Watcher`
 pub struct WatcherBuilder {
+    /// How fast (in seconds) the file watcher should check for changes.
     watch_interval: Option<u8>,
+    /// The files the file watcher should ignore.
     ignore_list: Option<Vec<String>>,
 }
 impl WatcherBuilder {
