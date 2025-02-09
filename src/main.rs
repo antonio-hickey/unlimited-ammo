@@ -10,6 +10,11 @@ mod watcher;
 ///   * Refactor try_build_codebase params
 ///   * Debug/Verbose mode
 fn main() -> Result<(), error::Error> {
+    // Initialize the debug logger
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+
     // Build the watcher / reloadoor
     let mut watcher = watcher::WatcherBuilder::new()
         .set_watch_interval(2)
