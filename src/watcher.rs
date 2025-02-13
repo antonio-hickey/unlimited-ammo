@@ -40,8 +40,7 @@ impl Watcher {
                 // TODO: Handle this unwrap lazy bum, I think this causes a bug that panics
                 // and leaves the application's process running, so also handle that.
                 if self.targets.get(target).unwrap() != target_modified_ts {
-                    // TODO: Better time formatting, a sys timestamp is too noisy to quickly extract context
-                    log::info!("you updated: {target} at {:?}", target_modified_ts);
+                    log::info!("rebuilding... detected file update @ {target}");
 
                     let need_to_build_web: bool = target.contains("/src/web/");
                     match self.try_build_codebase(need_to_build_web) {

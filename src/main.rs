@@ -22,7 +22,7 @@ fn main() -> Result<(), error::Error> {
         .inspect_err(|_| log::error!("failed to build project watcher"))?;
 
     // "Welcome" message per say
-    println!("\x1b[1;32mUnlimited Ammo Enabled\x1b[0m");
+    println!("\x1b[1;32mUnlimited Ammo Enabled\x1b[0m (v0.1.0)");
     println!("Just code, I'll cover reloading!\n\n");
 
     // Perform an initial build
@@ -33,11 +33,5 @@ fn main() -> Result<(), error::Error> {
         .inspect_err(|_| log::error!("failed to run initial build on project"))?;
 
     // Start watching the codebase for changes
-    match watcher.start() {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            eprintln!("{e:?}");
-            Err(e)
-        }
-    }
+    watcher.start().inspect_err(|e| log::error!("Uh Oh: {e:?}"))
 }

@@ -1,6 +1,16 @@
 [package]
 name = "unlimited-ammo"
 version = "0.1.0"
+authors = ["Antonio Hickey <contact@antoniohickey.com>"]
+description = "Hot reloader for Rust codebases, never waste time rebuilding again."
+documentation = "https://docs.rs/unlimited-ammo/latest/unlimited-ammo/index.html"
+homepage = "https://crates.io/crates/unlimited-ammo"
+repository = "https://github.com/antonio-hickey/unlimited-ammo"
+readme = "README.md"
+keywords = ["build", "build-tools", "hot-reloader", "toolchain"]
+license = "MIT"
+exclude = ["/.github/"]
+include = ["README.md", "src/**/*"]
 edition = "2021"
 
 [dependencies]
