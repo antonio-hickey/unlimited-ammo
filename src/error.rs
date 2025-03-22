@@ -2,6 +2,7 @@
 pub enum Error {
     StdIo(std::io::Error),
     WatchIntervalNotSet,
+    DisplayNotSet,
     BuildFailed(std::io::Error),
     FailedParsingOsString(std::ffi::OsString),
 }
@@ -17,6 +18,7 @@ impl Error {
             Self::FailedParsingOsString(e) => {
                 format!("Error: Failed parsing OS Native string: {:?}", e)
             }
+            Self::DisplayNotSet => String::from("Error: Log display not configured correctly."),
         }
     }
 }

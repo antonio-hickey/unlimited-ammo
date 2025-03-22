@@ -1,6 +1,6 @@
 [package]
 name = "unlimited-ammo"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Antonio Hickey <contact@antoniohickey.com>"]
 description = "Hot reloader for Rust codebases, never waste time rebuilding again."
 documentation = "https://docs.rs/unlimited-ammo/latest/unlimited-ammo/index.html"
@@ -11,14 +11,12 @@ keywords = ["build", "build-tools", "hot-reloader", "toolchain"]
 license = "MIT"
 exclude = ["/.github/"]
 include = ["README.md", "src/**/*"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 log = "0.4.25"
-env_logger = "0.11.6"
-
-[unlimited-ammo]
-watch_interval = 2
-ignore_list = [
-  ".git",
-]
+ratatui = "0.29.0"
+crossterm = { version = "0.28.1" }
+ansi-to-tui = "7.0.0"
+chrono = "0.4"
+unicode-segmentation = "1.12.0"
