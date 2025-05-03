@@ -1,7 +1,8 @@
-use crate::{error::Error, interface::Display};
+use crate::{config::Config, error::Error, interface::Display};
 use chrono::{DateTime, SecondsFormat, Utc};
 use std::{
     collections::HashMap,
+    fs,
     io::{BufRead, BufReader},
     process::{Child, Command},
     sync::{Arc, Mutex},
@@ -294,26 +295,23 @@ pub struct WatcherBuilder {
 impl WatcherBuilder {
     /// Initiate a Builder Pattern Struct for `Watcher`
     pub fn new() -> Self {
+        // Try to initialize `Watcher` from a config file within
+        // the current working directory of the project being reloaded.
+        let config = fs::read(".unlimited-ammo-config.toml")
+            .inspect_err(|e| eprintln!("failed to read configuration file: {e}"))
+            .map(|bytes| {
+                toml::from_slice::<Config>(&bytes)
+                    .inspect_err(|e| eprintln!("failed to parse configuration file: {e}"))
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
         WatcherBuilder {
             current_build_process: None,
-            watch_interval: None,
-            ignore_list: None,
+            watch_interval: Some(config.watcher.watch_interval),
+            ignore_list: Some(config.watcher.ignore_list),
             display: None,
         }
-    }
-
-    /// Set the watch interval (in seconds) of how fast to poll for changes
-    /// NOTE: This is required to build `Watcher`
-    pub fn set_watch_interval(mut self, seconds: u8) -> Self {
-        self.watch_interval = Some(seconds);
-        self
-    }
-
-    /// Set the list of files for the `Watcher` to ignore changes
-    /// NOTE: This has a default list if not explicitly set
-    pub fn _set_ignore_list(mut self, files_to_ignore: Vec<String>) -> Self {
-        self.ignore_list = Some(files_to_ignore);
-        self
     }
 
     /// Set the log display, this is where the log
@@ -334,31 +332,9 @@ impl WatcherBuilder {
         self
     }
 
-    /// Set the default list of files for the `Watcher` to ignore changes
-    fn set_default_ignore_list(mut self) -> Self {
-        self.ignore_list = Some(Vec::from([
-            String::from(".git"),
-            String::from(".gitignore"),
-            String::from("target"),
-            String::from("README.md"),
-            String::from("dist"),
-            String::from("node_modules"),
-            String::from("tsconfig.tsbuildinfo"),
-            String::from("tsconfig.node.tsbuildinfo"),
-        ]));
-
-        self
-    }
-
     /// Finish building `Watcher`
-    pub fn build(mut self) -> Result<Watcher, Error> {
+    pub fn build(self) -> Result<Watcher, Error> {
         // invariant checks
-        if self.watch_interval.is_none() {
-            return Err(Error::WatchIntervalNotSet);
-        }
-        if self.ignore_list.is_none() {
-            self = self.set_default_ignore_list();
-        }
         if self.display.is_none() {
             return Err(Error::DisplayNotSet);
         }

@@ -1,3 +1,4 @@
+mod config;
 mod error;
 mod interface;
 mod watcher;
@@ -15,7 +16,7 @@ use std::{
 };
 
 /// Unlimited Ammo Version
-pub static VERSION: &str = "v0.2.0";
+pub static VERSION: &str = "v0.2.1";
 
 fn main() -> Result<(), Error> {
     // Setup the terminal user interface
@@ -26,13 +27,11 @@ fn main() -> Result<(), Error> {
     let display = Arc::new(Mutex::new(interface::Display::new()));
     let display_clone = Arc::clone(&display);
 
-    // Spawn the watcher in a new thread
-    // so it doesn't block the interface
+    // Spawn the watcher in a new thread so it doesn't block the interface
     let build_process: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
     let build_process_clone = Arc::clone(&build_process);
     thread::spawn(move || {
         watcher::WatcherBuilder::new()
-            .set_watch_interval(2)
             .set_build_process(build_process_clone)
             .set_display(display_clone)
             .build()
